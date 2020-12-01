@@ -83,15 +83,16 @@ if (file.exists("data/map_data.csv")){
   cafe = read_csv(here::here("data/map_data.csv"))
 } else {source("map_data.R")}
 
-now = lubridate::now()
+now = lubridate::now("EST")
 now_day = weekdays(now)
 now_hour = lubridate::hour(now)
 
 cafe = cafe %>% 
-  filter(hour == now_hour, weekday == now_day) %>% 
+  filter(weekday == now_day,hour == now_hour) %>% 
   mutate(n_risk = forcats::fct_relevel(n_risk,
                                        "almost safe",
-                                       "some risk"))
+                                       "some risk",
+                                       "BURNING RISKY"))
 ```
 
 Options {.sidebar}
@@ -107,23 +108,26 @@ textInput(
 sliderTextInput(
   inputId = "tolerant",
   label = h3("Risk Willing to take"),
-  choice = cafe %>% distinct(n_risk) %>% arrange(n_risk) %>% pull(n_risk),
-  grid = T,
+  choice = c("almost safe",
+             "some risk",
+             "BURNING RISKY"),
   selected =
-    cafe %>% distinct(n_risk) %>% arrange(n_risk) %>% pull(n_risk) %>% first()
+    "almost safe"
 )
+
+boro = cafe %>% distinct(borough) %>% pull(borough)
 
 checkboxGroupInput(
   "borough",
   label = h3("Which Borough?"),
-  choices = cafe %>% distinct(borough) %>% pull(borough),
-  selected = cafe %>% distinct(borough) %>% pull(borough) %>% first()
+  choices = boro,
+  selected = "Manhattan"
 )
 
 
 ```
 
-```{r results="asis"}
+```{r,eval=F}
 renderPrint({
   knitr::knit_print(now)
 })

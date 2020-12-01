@@ -70,7 +70,16 @@ cafe =
   distinct(business_name,hour,weekday,.keep_all = T) %>% 
   group_by(business_name) %>% 
   mutate(fine_amount = mean(fine_amount)) %>% 
-  select(-id,-issue_date,-ptile)
+  select(-id,-issue_date)
+
+cafe %>%
+  select(business_name, adress:n_risk) %>%
+  full_join(cafe %>% distinct(business_name, weekday) %>%
+              mutate(hour = list(1:24))) %>%
+  unnest(hour) %>% 
+  left_join(cafe) %>% 
+  fill(0)
+
 
 write_csv(cafe,"data/map_data.csv")
 

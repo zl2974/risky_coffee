@@ -1,5 +1,5 @@
 ---
-title: "Where Do You Like A Cup of Safe Coffee?"
+title : "Where Do You Like A Cup of Safe Coffee?"
 runtime: shiny
 output: 
   flexdashboard::flex_dashboard:
@@ -33,6 +33,8 @@ options(
   ggplot2.continuous.fill = "viridis",
   digits = 10
 )
+
+Sys.setlocale("LC_TIME","C")
 
 scale_colour_discrete = scale_colour_viridis_d
 
@@ -84,15 +86,30 @@ if (file.exists("data/map_data.csv")){
 } else {source("map_data.R")}
 
 now = lubridate::now("EST")
+w_en = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+w_cn = c("星期一","星期二","星期三","星期四","星期五","星期六","星期天")
 now_day = weekdays(now)
+
+if (now_day %in% w_cn){
+  now_day = 
+    w_enp[which(now_day,w_cn)]
+}
+
 now_hour = lubridate::hour(now)
 
-cafe = cafe %>% 
-  filter(weekday == now_day,hour == now_hour) %>% 
+cafe = 
+  cafe %>%
+  select(-hour,-weekday,-hour_day_risk) %>% 
+  distinct() %>% 
+  left_join(cafe %>% 
+  filter(weekday == now_day,hour == now_hour)) %>% 
   mutate(n_risk = forcats::fct_relevel(n_risk,
                                        "almost safe",
                                        "some risk",
-                                       "BURNING RISKY"))
+                                       "BURNING RISKY"),
+         across(where(is.numeric),replace_na,replace = 0))
+
+boro = c("Manhattan","Queens","Bronx","Brooklyn")
 ```
 
 Options {.sidebar}
@@ -115,8 +132,6 @@ sliderTextInput(
     "almost safe"
 )
 
-boro = cafe %>% distinct(borough) %>% pull(borough)
-
 checkboxGroupInput(
   "borough",
   label = h3("Which Borough?"),
@@ -126,14 +141,6 @@ checkboxGroupInput(
 
 
 ```
-
-```{r,eval=F}
-renderPrint({
-  knitr::knit_print(now)
-})
-```
-
-
 
 Row {data-width=1000}
 -----------------------------------------------------------------------
@@ -197,42 +204,3 @@ renderLeaflet({
 })
   
 ```
-
-
-```{r time,eval=F}
-plot_time_df =
-  cafe %>% 
-  unnest(nearby) %>% 
-  mutate(hour = lubridate::hour(issue_date),
-         weekday = weekdays(issue_date),
-         weekday = 
-           forcats::fct_relevel(weekday,c("Monday","Tuesday","Wednesday",
-               "Thursday","Friday","Saturday","Sunday"))) %>% 
-  drop_na(borough) %>%
-  count(weekday, hour, borough, name = "ticket") %>%
-  mutate(text = str_c("TIME: ", hour, ":00 on ", weekday, 
-                      "<br>Total Tickets:",ticket))
-plot_time =
-  plot_time_df %>% 
-  plot_ly(
-    type = "bar",
-    x = ~ hour,
-    y = ~ ticket,
-    text = ~text,
-    frame = ~ weekday,
-    color = ~ borough,
-    colors = viridis::viridis(4,option = "D")
-  ) %>%
-  layout(barmode = 'group',
-         title = "Total Number of Tickets by Hour",
-         showlegend = T,
-         legend = list(orientation = "h"),
-         yaxis =list(type = "log",
-                     title = ''),
-         xaxis = list(nticks = 24)) %>%
-  animation_opts(transition = 0) %>% 
-  animation_button(hide =T)
- 
-plot_time
-```
-

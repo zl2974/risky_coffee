@@ -14,7 +14,8 @@ cafe = read_csv(here::here("data/Sidewalk_Caf__Licenses_and_Applications_clean.c
         sep = ",") %>% 
   select(business_name,adress,starts_with("swc"),long,lat,borough)
 
-parking = read_csv(here::here("data/parking_vio2021_cleanv1.csv")) %>% 
+parking = read_csv(here::here("data/parking_vio2021_cleanv1.csv")) %>%
+  drop_na(address) %>% 
   select(id,long,lat,issue_date,fine_amount)
 
 get_nearby_area =
@@ -75,49 +76,3 @@ cafe =
 write_csv(cafe,"data/map_data.csv")
 
 rm(parking)
-
-cafe_md = 
-cafe %>%
-  select(business_name, adress:n_risk) %>%
-  full_join(cafe %>% distinct(business_name, weekday) %>%
-              mutate(hour = list(1:24))) %>%
-  unnest(hour) %>% 
-  left_join(cafe) %>% 
-  mutate(across(where(is.numeric),replace_na,replace = 0)) %>% 
-  ungroup() %>% 
-  left_join(read_csv(here::here("data/Sidewalk_Caf__Licenses_and_Applications_clean.csv")) %>% 
-              select(business_name,borough,street_name)) %>% 
-  select(borough:street_name) %>% 
-  sample_n(size = 20000) %>% 
-  modelr::crossv_mc(n=10,test = 0.4) %>% 
-  mutate(
-    md_1 =
-      map(.x = train,~lm(hour_day_risk ~
-                      ticket+borough+hour+weekday,data = .x)),
-    md_2 = 
-      map(.x = train,~lm)
-  )
-
-md_1 = 
-  lm(hour_day_risk ~
-       ticket+borough+hour+weekday,data = cafe)
-
-summary(md_1)
-
-md_2 =
-  lme4::lmer(
-    hour_day_risk ~
-      ticket+borough+hour+weekday + (1 + borough | street_name),
-    data = cafe)
-
-summary(md_2)
-
-md_2 %>% broom.mixed::tidy()
-
-md_3 = 
-  glm(hour_day_risk ~
-        ticket+borough+hour+weekday,
-      family = poisson(),
-      data = cafe)
-
-summary(md_3)

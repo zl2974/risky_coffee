@@ -1,7 +1,28 @@
 ---
-title: "Report"
-author: "Jeffrey Liang"
-date: "12/3/2020"
+title: "Regression Analysis"
+navbar:
+  left:
+    - text : "HOME"
+      href : https://zl2974.github.io/hot_coffee/
+  right:
+    - text: 'Data Exploration'
+      href: https://zl2974.github.io/hot_coffee/data_exploration.html
+    - text: 'Data Analysis'
+      menu:
+        - text: "Analysis"
+          href: https://zl2974.github.io/hot_coffee/test_here.html
+        - text: "Regression"
+          href: ./Report
+    - text: "Map"
+      href: https://zl2974.shinyapps.io/Risky_Coffee/
+    - text: 'Data'
+      href: https://zl2974.github.io/hot_coffee/data_source.html
+    - text: 'About'
+      href: https://zl2974.github.io/hot_coffee/Proposal.html
+    - icon: fa-envelope fa-lg
+      href: mailto:<liuyuzhust@163.com>
+    - icon: fa-github fa-lg
+      href: https://github.com/zl2974/hot_coffee
 output: 
   html_document:
     theme: cosmo
@@ -42,6 +63,7 @@ scale_fill_discrete = scale_fill_viridis_d
 
 # Predicting Model For Tickets Around The Cafe
 
+## Data
 From previously data exploration and data analysis, we know that the tickets issue is different in borough, hour and weekdays.
 
 Therefore, for us to predicting the possible amount of ticket around certain area of a cafe( in our case, 100m around the cafe), we use these variables as our interested predictors for our model. 
@@ -94,9 +116,9 @@ Because of the poison distribution of the dependent, we propose 3 models for pre
 
 1. General Model of *hour_day_risk ~ ticket + borough + hour + weekday* with _poison()_ family
 1. General Model of _hour_day_risk ~ ticket + borough*hour + weekday_ with _poison()_ family, assuming that there are interaction
-1. General Addiction Model of *hour_day_risk ~ ticket + borough + s(hour) + weekday* with _poison()_ family and addressing that most tickets is issued during office hour.
+1. General Addiction Model of *hour_day_risk ~ s(ticket) + s(hour) + borough  + weekday* with _poison()_ family and addressing that most tickets is issued during office hour.
 
-```{r model,cache = T}
+```{r model,cache = F}
 set.seed(1)
 cafe_md =
   cafe %>% 

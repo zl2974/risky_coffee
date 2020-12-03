@@ -1,0 +1,203 @@
+---
+title: "Report"
+author: "Jeffrey Liang"
+date: "12/3/2020"
+output: 
+  html_document:
+    theme: cosmo
+    toc : true
+    toc_float: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(readxl)
+library(patchwork)
+library(plotly)
+library(leaflet)
+library(ggplot2)
+library(lubridate)
+
+knitr::opts_chunk$set(
+  fig.height = 6,
+  fig.width = 8,
+  message = F,
+  echo = T,
+  warning = F
+)
+
+theme_set(theme_minimal() + theme(legend.position = "bottom"))
+options(
+  ggplot2.continuous.colour = "viridis",
+  ggplot2.continuous.fill = "viridis",
+  digits = 3
+)
+
+scale_colour_discrete = scale_colour_viridis_d
+
+scale_fill_discrete = scale_fill_viridis_d
+
+```
+
+# Predicting Model For Tickets Around The Cafe
+
+From previously data exploration and data analysis, we know that the tickets issue is different in borough, hour and weekdays.
+
+Therefore, for us to predicting the possible amount of ticket around certain area of a cafe( in our case, 100m around the cafe), we use these variables as our interested predictors for our model. 
+
+```{r data, cache=T}
+cafe =
+  read_csv("data/map_data.csv") %>%
+  select(business_name, adress:n_risk) %>%
+  full_join(
+    read_csv("data/map_data.csv") %>%
+      distinct(business_name, weekday) %>%
+      mutate(hour = list(1:24))
+  ) %>%
+  unnest(hour) %>%
+  left_join(read_csv("data/map_data.csv")) %>%
+  drop_na()%>% 
+  mutate(across(where(is.numeric), replace_na, replace = 0)) %>%
+  ungroup() %>%
+  left_join(read_csv(
+    here::here("data/Sidewalk_Caf__Licenses_and_Applications_clean.csv")
+  ) %>%
+    select(business_name, borough, street_name)) %>%
+  mutate(weekday =
+           if_else(weekday %in% c("Saturday", "Sunday"),
+                   "Weekend",
+                   "Workday"))%>%
+  select(business_name,borough:hour_day_risk)
+  
+```
+
+
+Our interested dependent is **hour_day_risk**: the amount of tickets issue in this area of certain hour and weekday. We can interpret that this dependent is following poison distribution, so we need to consider regression model for this settings.
+
+```{r}
+cafe %>% 
+  ggplot(aes(x = hour_day_risk))+geom_histogram()
+```
+
+
+And here's the predictors in our model:
+
+- *hour* : integer reflecting the 24 hour format of hour of the day;
+- *weekday* : factors reflecting either it is a workday or weekend;
+- *borough* : factors reflecting which borough this area is in;
+- *tickets* : float reflecting the baseline total issue tickets of the area;
+
+## Fitting Model
+
+Because of the poison distribution of the dependent, we propose 3 models for prediction:
+
+1. General Model of *hour_day_risk ~ ticket + borough + hour + weekday* with _poison()_ family
+1. General Model of _hour_day_risk ~ ticket + borough*hour + weekday_ with _poison()_ family, assuming that there are interaction
+1. General Addiction Model of *hour_day_risk ~ ticket + borough + s(hour) + weekday* with _poison()_ family and addressing that most tickets is issued during office hour.
+
+```{r model,cache = T}
+set.seed(1)
+cafe_md =
+  cafe %>% 
+  sample_n(size = 20000) %>%
+  modelr::crossv_mc(n = 30, test = 0.4) %>%
+  mutate(train = map(train, as.tibble), 
+         test = map(test, as.tibble)) %>% 
+  mutate(
+    md_glm =
+      map(
+        .x = train,
+        ~ glm(
+          (hour_day_risk) ~
+            ticket + borough + hour + weekday,
+          family = poisson(),
+          data = .x
+        )
+      ),
+    md_glm_int =
+      map(
+        .x = train,
+        ~ glm(
+          (hour_day_risk) ~
+            ticket + borough * hour + weekday,
+          family = poisson(),
+          data = .x
+        )
+      ),
+    md_gam =
+      map(
+        .x = train,
+        ~ mgcv::gam(
+          (hour_day_risk) ~
+            s(hour,k=3) + s(ticket, k = 5) + borough +  weekday,
+          family = poisson(),
+          data = .x
+        )
+      )
+  ) %>%
+  select(-train)
+```
+
+
+```{r model_show,cache = F}
+md = cafe_md %>% 
+  select(starts_with("md")) %>% 
+  pivot_longer(
+    starts_with("md"),
+    names_to = "model",
+    values_to = "regression",
+    names_prefix = "md_"
+  ) %>% 
+  distinct(model,.keep_all = T) %>% 
+  mutate(regression = map(regression,broom::tidy))
+
+md %>%
+  filter(model == "glm") %>%
+  unnest(regression) %>%
+  knitr::kable(caption = "glm")
+
+md %>%
+  filter(model == "glm_int") %>%
+  unnest(regression) %>%
+  knitr::kable(caption = "glm_in")
+
+md %>%
+  filter(model == "gam") %>%
+  unnest(regression) %>%
+  knitr::kable(caption = "gam")
+```
+
+## Cross-validation for model
+
+\ Looking at all model, all predictors we chose are statistically significant.so we stick to these model predictor for our model. and looking at all three model, the residual mean sum of square are similar across 3 model. So firstly, interaction terms are not contributing to model predictability. And secondly,first order general linear model provide similar predictability to 5 order general addiction model. Given above consideration, and taking computing and optimization into consideration, we think the general linear model would be useful for predicting ticket of a area in certain time and day for our app.
+
+```{r rmse, cache=T}
+cafe_md %>% 
+  mutate(
+    rmse_glm_int = 
+      map2_dbl(.y = test,
+          .x = md_glm_int,
+          ~modelr::rmse(.x,.y)),
+     rmse_glm = 
+      map2_dbl(.y = test,
+          .x = md_glm,
+          ~modelr::rmse(.x,.y)),
+     rmse_gam = 
+      map2_dbl(.y = test,
+          .x = md_gam,
+          ~modelr::rmse(.x,.y))
+  ) %>% 
+  select(starts_with("rmse")) %>% 
+  pivot_longer(
+    starts_with("rmse"),
+    names_to = "model",
+    values_to = "rmse",
+    names_prefix = "rmse_"
+  ) %>% 
+  ggplot(aes(x = model,y = rmse,fill = model))+
+  geom_violin(alpha = 0.6)
+```
+
+## Model Conclusion
+\ *hour, weekdays, borough*, and the *baseline total amount of tickets issue* are all good predictor for expecting amount of ticket issue in a certain hour of a day. 
